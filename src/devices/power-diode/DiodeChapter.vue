@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 第 1 章：功率二极管
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue'
 import gsap from 'gsap'
 import Bi from '../../components/Bi.vue'
 import ChapterLayout from '../../components/ChapterLayout.vue'
@@ -9,6 +9,11 @@ import PinAppsStage from '../../components/PinAppsStage.vue'
 import PinDeviceStage from '../../components/PinDeviceStage.vue'
 import PinDilemmaStage from '../../components/PinDilemmaStage.vue'
 import PinResultStage from '../../components/PinResultStage.vue'
+import PinSectionStage from '../../components/PinSectionStage.vue'
+import PinSymbolStage from '../../components/PinSymbolStage.vue'
+import PinPackagesStage from '../../components/PinPackagesStage.vue'
+// 3D 舞台带着 Three.js，只在进入 1.2 的 3D 步骤时才加载
+const Diode3DStage = defineAsyncComponent(() => import('../../components/Diode3DStage.vue'))
 import PinVA from '../../components/PinVA.vue'
 import PinDropChart from '../../components/PinDropChart.vue'
 import { exposeDebug } from '../../app/debug'
@@ -38,6 +43,9 @@ function update(p: Partial<PinState>) {
 
 /** 结构、反偏、正偏用第 0 章的粒子舞台；换步时同一个舞台连续运行 */
 const onDevice = computed(() => ['structure', 'reverse', 'ohmic', 'forward'].includes(step.value.mode))
+
+/** TO-247 与平板压接型两步共用一个 3D 舞台（换步时换模型） */
+const on3d = computed(() => ['to247', 'pressfit'].includes(step.value.mode))
 
 /** 二极管符号的导通状态：正偏画面里点亮 */
 const conducting = computed(() => step.value.mode === 'forward' || step.value.mode === 'ohmic' || step.value.mode === 'result')
@@ -76,6 +84,10 @@ const TEXT = {
 
     <template #stage>
       <PinDeviceStage v-if="onDevice" ref="stage" :step="step" :s="s" @update="update" />
+      <Diode3DStage v-else-if="on3d" ref="stage" :step="step" />
+      <PinSectionStage v-else-if="step.mode === 'section'" :step="step" />
+      <PinSymbolStage v-else-if="step.mode === 'symbol'" :step="step" />
+      <PinPackagesStage v-else-if="step.mode === 'packages'" :step="step" />
       <PinResultStage v-else-if="step.mode === 'result'" ref="stage" :step="step" :s="s" @update="update" />
       <PinDilemmaStage v-else-if="step.mode === 'dilemma'" :step="step" />
       <PinAppsStage v-else-if="step.mode === 'apps'" ref="stage" :step="step" />

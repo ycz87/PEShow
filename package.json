@@ -30,6 +30,7 @@
     "@types/d3-scale": "^4.0.9",
     "@types/d3-shape": "^3.2.0",
     "@types/katex": "^0.16.8",
+    "@types/three": "^0.170.0",
     "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "~5.9",
     "vite": "^8.3.2",

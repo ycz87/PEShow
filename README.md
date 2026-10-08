@@ -49,6 +49,7 @@ npm run typecheck  # 只做类型检查
 
 - [Vue 3](https://vuejs.org/) + TypeScript + [Vite](https://vitejs.dev/)
 - [PixiJS 8](https://pixijs.com/)：粒子舞台（WebGL）
+- [Three.js](https://threejs.org/)：1.2 的器件 3D 模型（程序化生成的卡通模型，不使用外部模型文件）
 - Canvas 2D / SVG：图表与示意图
 - [KaTeX](https://katex.org/)：公式
 - [GSAP](https://gsap.com/)：过渡动画
@@ -66,7 +67,7 @@ src/
     power-diode/    第 1 章
   engine/
     physics/      物理模型与粒子仿真（PN 结、PiN、击穿、反向恢复……）
-    render/       渲染器（PixiJS 粒子舞台、Canvas 画面）
+    render/       渲染器（PixiJS 粒子舞台、Three.js 3D 模型、Canvas 画面）
 tests/            物理模型与仿真的单元测试
 docs/             各章分镜与讲解稿、实施计划
 ```
@@ -74,6 +75,10 @@ docs/             各章分镜与讲解稿、实施计划
 ## 文档
 
 `docs/` 里是各章的分镜与讲解稿，包括每一步的画面设计、讲解文字、数值核算与严谨性自查记录。
+
+## 图片来源
+
+1.2「封装形式」里的实物照片取自 [Wikimedia Commons](https://commons.wikimedia.org/)，各按其许可（CC0、CC BY-SA）使用，作者与许可见 [`src/assets/photos/ATTRIBUTION.md`](src/assets/photos/ATTRIBUTION.md)，页面上每张照片下也有标注。照片的版权归各自作者所有。
 
 ---
 
