@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { BV_PIN, I_SAT_OHMIC, MAT_REF, NA_PLUS, scoreboard, PIN, criticalField, depletionW, fieldAt, forward, forwardI, forwardU, genI, ohmicDrop, pinMat, oneSidedJunction, reverseField } from '../src/engine/physics/pin'
+import { BV_PIN, I_SAT_OHMIC, MAT_REF, NA_PLUS, scoreboard, PIN, criticalField, crossover, depletionW, fieldAt, forward, forwardI, forwardU, genI, lineFit, multiplication, ohmicDrop, pinMat, oneSidedJunction, reverseField, reverseI, terminalU } from '../src/engine/physics/pin'
 import { forwardRecoveryOf, recoveryOf, turnOff, turnOn } from '../src/engine/physics/pinTransient'
 
 // 数值对照《第 1 章分镜与讲解稿》（v1）各节的表格；误差范围按讲解稿的有效数字给
@@ -85,18 +85,39 @@ describe('1.1 正偏：电导调制', () => {
   })
 })
 
-describe('1.3 温度', () => {
-  it('30 A 时 25 °C 约 1.52 V、125 °C 约 1.54 V；小电流负温度系数，额定电流附近正温度系数', () => {
-    const hot = pinMat(125)
-    near(forwardU(30), 1.52, 0.01)
-    near(forwardU(30, { m: hot }), 1.54, 0.01)
-    expect(forwardU(0.3, { m: hot })).toBeLessThan(forwardU(0.3))
-    expect(forwardU(30, { m: hot })).toBeGreaterThan(forwardU(30))
+describe('1.3 静态特性（端电压 = 芯片 + 串联电阻）', () => {
+  it('30 A：芯片 1.53 V，端电压 25 °C 约 1.77 V、125 °C 约 1.74 V', () => {
+    near(forwardU(30), 1.53, 0.01)
+    near(terminalU(30), 1.77, 0.01)
+    near(terminalU(30, 125), 1.74, 0.01)
   })
-  it('漏电流（1200 V）：25 °C 约 0.04 µA，125 °C 约为 600 倍', () => {
+  it('温度交点约 40 A，50–150 °C 之间几乎不动；交点以下热的压降低，以上热的压降高', () => {
+    for (const t of [50, 100, 125, 150]) near(crossover(t)!, 39.5, 0.04)
+    expect(crossover(25)).toBeNull()
+    expect(terminalU(15, 125)).toBeLessThan(terminalU(15))
+    expect(terminalU(60, 125)).toBeGreaterThan(terminalU(60))
+  })
+  it('直线近似随区间变化：15–60 A 约 1.44 V、10.2 mΩ；3–10 A 约 1.21 V、31 mΩ', () => {
+    const a = lineFit(15, 60)
+    near(a.UTO, 1.442, 0.01)
+    near(a.rT, 0.0102, 0.02)
+    const b = lineFit(3, 10)
+    near(b.UTO, 1.206, 0.01)
+    near(b.rT, 0.0311, 0.02)
+  })
+  it('升温：U_TO 降、r_T 升，交点 ≈ ΔU_TO/Δr_T', () => {
+    const a = lineFit(15, 60)
+    const b = lineFit(15, 60, 125)
+    expect(b.UTO).toBeLessThan(a.UTO)
+    expect(b.rT).toBeGreaterThan(a.rT)
+    near((a.UTO - b.UTO) / (b.rT - a.rT), crossover(125)!, 0.05)
+  })
+  it('漏电流（1200 V）：产生电流 25 °C 约 0.044 µA，125 °C 约为 600 倍；乘倍增因子 1.72 后 0.075 µA', () => {
     const cold = genI(1200)
     near(cold * 1e6, 0.044, 0.05)
     near(genI(1200, pinMat(125)) / cold, 602, 0.02)
+    near(multiplication(1200), 1.72, 0.01)
+    near(reverseI(1200) * 1e6, 0.075, 0.02)
   })
   it('迁移率与寿命在 25 °C 时等于参考值', () => {
     expect(MAT_REF.mun).toBeCloseTo(1414, 6)

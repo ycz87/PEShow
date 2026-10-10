@@ -19,10 +19,17 @@ export type { Formula, Line, Mood } from '../../common/content'
  * - to247：TO-247 单管的 3D 模型（Three.js）
  * - pressfit：平板压接型的 3D 模型（Three.js）
  * - packages：其他封装形式（实物照片 + 简图）
+ *
+ * 1.3 的各步（静态特性图 + 参数卡片，不用粒子舞台）：
+ * - staticAll：完整的 V-A 曲线，三个工作区
+ * - staticFwd：正向特性、直线近似与正向参数
+ * - staticRev：反向特性、击穿与反向参数
+ * - staticTemp：温度对正向、反向特性与参数的影响
  */
 export type PinMode =
   | 'apps' | 'dilemma' | 'structure' | 'reverse' | 'ohmic' | 'forward' | 'result'
   | 'symbol' | 'section' | 'to247' | 'pressfit' | 'packages'
+  | 'staticAll' | 'staticFwd' | 'staticRev' | 'staticTemp'
 
 /**
  * 舞台工具

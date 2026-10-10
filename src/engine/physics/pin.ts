@@ -7,8 +7,9 @@
 //  - 正偏：N⁻ 区大注入、双极扩散的解析解（Hall），两端为理想发射极（可设阳极注入效率 γ），
 //    迁移率取低掺杂值、不随载流子浓度变化，不计俄歇复合与载流子–载流子散射。
 //    端电压 = 两个结上的压降（由 N⁻ 两端的载流子浓度决定）+ N⁻ 区压降。
-//  - 温度：μ_n ∝ T^−2.42、μ_p ∝ T^−2.2，大注入寿命 τ ∝ T^1.5，n_i 同第 0 章。
+//  - 温度：μ_n ∝ T^−2.42、μ_p ∝ T^−2.2，大注入寿命 τ ∝ T^1.8，n_i 同第 0 章。
 //  - 漏电流：耗尽层内的产生电流，产生寿命 τ_g 简化为常数。
+//  - 端电压（1.3 起）：芯片 + 串联电阻 R_s（校准量，见 RS）。
 import { EPS_SI, K_B, Q, kelvin, niSi } from './pn'
 
 export const PIN = {
@@ -24,6 +25,8 @@ export const PIN = {
   URRM: 1200,
   /** 25 °C 的大注入寿命（s） */
   tau: 0.2e-6,
+  /** 寿命的温度指数 τ ∝ T^tauExp（校准量：与 RS 一起把温度交点放在额定电流附近，1.3） */
+  tauExp: 1.8,
   /** 产生寿命（s），只用于漏电流 */
   tauG: 100e-6,
   /** 25 °C 的低掺杂迁移率 cm²/(V·s) */
@@ -61,7 +64,7 @@ export function pinMat(tC = T_REF_PIN, tau25 = PIN.tau): PinMat {
   const mup = PIN.mup * r ** -2.2
   const Dn = mun * UT
   const Dp = mup * UT
-  return { tC, UT, ni: niSi(TK), mun, mup, Dn, Dp, Da: (2 * Dn * Dp) / (Dn + Dp), b: mun / mup, tau: tau25 * r ** 1.5 }
+  return { tC, UT, ni: niSi(TK), mun, mup, Dn, Dp, Da: (2 * Dn * Dp) / (Dn + Dp), b: mun / mup, tau: tau25 * r ** PIN.tauExp }
 }
 
 export const MAT_REF = pinMat()
@@ -242,6 +245,53 @@ export function forwardI(U: number, o: ForwardOpts & { R?: number } = {}) {
     else hi = mid
   }
   return 10 ** ((lo + hi) / 2)
+}
+
+// ───────────── 端电压、直线近似与温度（1.3） ─────────────
+
+/**
+ * 串联电阻 R_s（Ω，25 °C）与温度系数（1/°C）。校准量，不是测量值：代表芯片模型没算进去、
+ * 使大电流压降上升的部分（俄歇复合、载流子散射、端区复合）和衬底、焊层、键合线、引脚的电阻，
+ * 使斜率电阻落进真实 30 A 级器件的范围（约 8–17 mΩ）
+ */
+export const RS = { R25: 0.008, tc: 0.003 }
+export const seriesR = (tC = T_REF_PIN) => RS.R25 * (1 + RS.tc * (tC - T_REF_PIN))
+
+const matCache = new Map<number, PinMat>()
+/** 某一结温的材料参数（按温度缓存，滑块拖动时不必重算） */
+export function matAt(tC: number) {
+  let m = matCache.get(tC)
+  if (!m) {
+    m = pinMat(tC)
+    matCache.set(tC, m)
+  }
+  return m
+}
+
+/** 端电压（V）：芯片（两个结 + N⁻ 区）+ 串联电阻 */
+export const terminalU = (I: number, tC = T_REF_PIN) => (I <= 0 ? 0 : forwardU(I, { m: matAt(tC), R: seriesR(tC) }))
+
+/** 正向特性的直线近似 u = U_TO + r_T·i：过 I1、I2 两点的直线 */
+export function lineFit(I1: number, I2: number, tC = T_REF_PIN) {
+  const u1 = terminalU(I1, tC)
+  const r = (terminalU(I2, tC) - u1) / (I2 - I1)
+  return { UTO: u1 - r * I1, rT: r }
+}
+
+/** 温度 tC 与 25 °C 两条正向曲线的交点电流（A）；温差太小或范围内没有交点时为 null */
+export function crossover(tC: number, lo = 1, hi = 300) {
+  if (Math.abs(tC - T_REF_PIN) < 5) return null
+  const d = (I: number) => terminalU(I, tC) - terminalU(I, T_REF_PIN)
+  if (Math.sign(d(lo)) === Math.sign(d(hi))) return null
+  let a = Math.log(lo)
+  let b = Math.log(hi)
+  const sa = Math.sign(d(lo))
+  for (let k = 0; k < 40; k++) {
+    const mid = (a + b) / 2
+    if (Math.sign(d(Math.exp(mid))) === sa) a = mid
+    else b = mid
+  }
+  return Math.exp((a + b) / 2)
 }
 
 /**
