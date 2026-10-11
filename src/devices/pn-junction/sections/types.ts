@@ -19,7 +19,7 @@ export type SceneId = 'lattice' | 'junction' | 'breakdown'
  * - magnifier：空穴放大镜
  * - hop / efield / dope：晶格场景的单步跳、电场开关、掺杂开关与浓度
  * - device / limit：击穿场景的示例器件切换、限流与散热
- * 动态特性（0.8）的换流按钮与 I_F、di/dt 滑块由 Step.switching 决定，不在这里列
+ * 动态特性（0.8）的开关按钮与 I_F、I_R 滑块由 Step.switching 决定，不在这里列
  */
 export type ToolId =
   | 'temp'
@@ -37,7 +37,7 @@ export type ToolId =
   | 'limit'
 
 /** 舞台下方的图表 */
-/** scope 跟着舞台的换流过程画；scopeOn、scopeOff 画同一组条件下开通、关断的完整波形（0.8-6 对比） */
+/** scope 跟着舞台的开关过程画；scopeOn、scopeOff 画同一组条件下开通、关断的完整波形（0.8-6 对比） */
 export type ChartId = 'ni' | 'vi' | 'cv' | 'scope' | 'scopeOn' | 'scopeOff' | 'circuit' | 'trajectory' | 'zener'
 
 /** 晶格场景（0.1–0.2）这一步的画面设定 */
@@ -63,7 +63,7 @@ export interface BreakdownCue {
 
 /** 动态特性（0.8）这一步的画面设定 */
 export interface SwitchCue {
-  mode: 'intro' | 'on' | 'off' | 'peak' | 'recover' | 'compare' | 'vi'
+  mode: 'intro' | 'on' | 'off' | 'block' | 'recover' | 'compare' | 'vi'
 }
 
 export interface Step extends StepBase {

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 0.8 舞台控制条：换流按钮、进程提示、此刻的二极管电压；对比一步再加 I_F 与 di_F/dt 两个滑块
+// 0.8 舞台控制条：拨开关的按钮、进程提示、此刻的二极管电压；对比一步再加 I_F 与 I_R 两个滑块
 import { computed, ref, watch } from 'vue'
 import Bi from './Bi.vue'
-import { DIDT_RANGE, IF_RANGE, type SwitchLive } from '../app/switching'
+import { IF_RANGE, IR_RANGE, type SwitchLive } from '../app/switching'
 import { sampleAt, type SwitchParams } from '../engine/physics/recovery'
 import { UI } from '../devices/pn-junction/sections/ui'
 import { tx } from '../app/settings'
@@ -24,12 +24,12 @@ const status = computed(() => {
 })
 const v = computed(() => sampleAt(props.live.w, props.live.t).v)
 
-// 滑块拖动时只更新读数，松手才重新计算一次换流
+// 滑块拖动时只更新读数，松手才重新计算一次
 const IF = ref(props.live.w.p.IF)
-const didt = ref(props.live.w.p.didt)
+const IR = ref(props.live.w.p.IR)
 watch(() => props.live.w.p, (p) => {
   IF.value = p.IF
-  didt.value = p.didt
+  IR.value = p.IR
 })
 const num = (e: Event) => +(e.target as HTMLInputElement).value
 </script>
@@ -60,9 +60,9 @@ const num = (e: Event) => +(e.target as HTMLInputElement).value
         <output class="bias-val">{{ Math.round(IF * 1e3) }} mA</output>
       </label>
       <label class="bias">
-        <span class="bias-name"><Bi :t="S.didt" /></span>
-        <input type="range" :min="DIDT_RANGE.min" :max="DIDT_RANGE.max" :step="DIDT_RANGE.step" :value="didt" @input="didt = num($event)" @change="emit('params', { didt })" />
-        <output class="bias-val">{{ Math.round(didt / 1e3) }} mA/µs</output>
+        <span class="bias-name"><Bi :t="S.IR" /></span>
+        <input type="range" :min="IR_RANGE.min" :max="IR_RANGE.max" :step="IR_RANGE.step" :value="IR" @input="IR = num($event)" @change="emit('params', { IR })" />
+        <output class="bias-val">{{ Math.round(IR * 1e3) }} mA</output>
       </label>
     </div>
     <small class="sw-circuit"><Bi :t="S.circuit" /></small>

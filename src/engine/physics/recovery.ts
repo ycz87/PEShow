@@ -7,17 +7,16 @@
 // 端电流再加上耗尽层的充放电电流 dQ_j/dt（势垒电容，大信号）。体电阻 R_S 固定、没有电导调制，
 // 所以这里没有功率二极管的正向恢复电压过冲（P1 再讲）。
 //
-// 测试电路（典型的感性换流电路）：
-//  - 负载电流 I_F 恒定（大电感负载）；二极管续流时导通 I_F。
-//  - 关断：开关支路（反向电压 U_R 串换流电感 L）接通，电流从二极管换到开关支路。
-//    L = (U_R + U_F)/(di_F/dt)，于是二极管电流按 di_F/dt 下降；恢复阻断时 L 上感应出电压过冲 U_RM。
-//  - 开通：开关支路电流按 di_F/dt 降到零，负载电流转到二极管。
-//  - 二极管两端并 RC 缓冲：C_s = 2 nF，R_s = 2ζ√(L/C_s)，ζ = 0.7，抑制 L 与结电容的振荡。
+// 测试电路（电阻法，小功率二极管手册常用的 I_F / I_R 切换测法）：
+//  正向电源 U₁、反向电源 U_R 经单刀双掷开关 S、限流电阻 R、回路电感 L 接二极管。
+//  - S 拨到 U₁：正向导通，I_F = (U₁ − U_F)/R。
+//  - S 拨到 −U_R：关断。结边还有多余少子时结仍正偏，反向电流约为 (U_R + u)/R，由电阻决定（存储时间 t_s）；
+//    结边少子抽空后结开始阻断，反向电流衰减，电压趋于 −U_R。
+//  R 固定，U₁、U_R 按设定的 I_F、I_R = U_R/R 反推。开关切换是理想的。
+//  L 代表导线等回路电感：真实回路总有电感，电流不会瞬间反向。真实导线的电感在这里的时间常数 L/R 只有几纳秒、看不出来，
+//  所以按比例放大到 50 µH（L/R = 0.1 µs，约为 t_rr 的 4%）。R 把它阻尼掉了，没有电压过冲。
 import { qB } from './capacitance'
 import { J_REF, TAU, diodeV, type Junction } from './pn'
-
-/** RC 缓冲：电容 C_s（F）与阻尼比 ζ（R_s 按换流电感匹配） */
-export const SNUBBER = { Cs: 2e-9, zeta: 0.7 }
 
 /** 空间步长（扩散长度）、计算区长度（扩散长度，远大于 1 即为长基区）、时间步长（τ） */
 const DX = 0.02
@@ -97,43 +96,56 @@ export class Base {
   }
 }
 
+/** 限流电阻 R（Ω） */
+export const R_LIM = 500
+/** 回路电感 L（H），见文件开头的说明 */
+export const L_LOOP = 50e-6
+
 export interface SwitchParams {
   /** 正向电流 A */
   IF: number
-  /** 换流时的电流变化率 A/s */
-  didt: number
-  /** 反向电压 V */
-  VR: number
+  /** 反向电流 I_R = U_R/R（A），关断时电阻限定的反向电流 */
+  IR: number
 }
 
 export type SwitchKind = 'on' | 'off'
 
-/** 反向恢复参数（时间 s、电流 A、电压 V、电荷 C），定义见 metrics */
-export interface RecoveryMetrics {
-  t0: number
-  t1: number
-  t2: number
-  td: number
-  tf: number
-  trr: number
-  IRP: number
-  URP: number
-  Qrr: number
-  /** 二极管电压过零（开始反向）的时刻 */
-  tv0: number
-  /** t₂ 的外推直线（IEC 60747-2）经过的两个点：反向电流降到 0.9 I_RM 与 0.25 I_RM 处 */
-  fit: [[number, number], [number, number]]
+/** 两个电源的电压（V）：U₁ = U_F + I_F·R，U_R = I_R·R */
+export function sources(p: SwitchParams, j = J_REF) {
+  return { U1: diodeV(p.IF, j) + p.IF * R_LIM, UR: p.IR * R_LIM }
 }
+
+/** 反向恢复参数（时间 s、电流 A、电荷 C），定义见 metrics */
+export interface RecoveryMetrics {
+  /** 电流过零的时刻 t₀（开关切换后） */
+  t0: number
+  /** 存储时间：t₀ 到结电压过零（结开始阻断） */
+  ts: number
+  /** 下降时间：结开始阻断到反向电流降到 0.25 I_R */
+  tf: number
+  /** 反向恢复时间 t_rr = t_s + t_f（从 t₀ 算起） */
+  trr: number
+  /** 结开始阻断、恢复结束的时刻（开关切换后），即 t₀ + t_s、t₀ + t_rr */
+  tBlock: number
+  tEnd: number
+  /** 反向电流的最大值（A） */
+  IRmax: number
+  /** t₀–t₀ + t_rr 之间反向电流的面积 */
+  Qrr: number
+  /** 二极管端电压过零（开始反向）的时刻 */
+  tv0: number
+}
+
+/** 测 t_rr 时反向电流降到 I_R 的几分之几为止（与 UF4007、STTH8R06 等手册的 I_rr = 0.25 I_R 相同） */
+export const IRR_FRAC = 0.25
 
 export interface Waveform {
   kind: SwitchKind
   p: SwitchParams
-  /** 采样间隔 s；下标 0 为换流开始（t = 0）前的稳态 */
+  /** 采样间隔 s；下标 0 为开关切换（t = 0）前的稳态 */
   dt: number
-  /** 二极管电流（A，阳极流入为正）、端电压（V）、结压降（V）、存储电荷（C）；
-   *  开关支路（S、L、U_R）的电流 iS（A，从上母线流向下母线为正）。缓冲支路电流 = I_F − i − iS */
+  /** 二极管电流（A，阳极流入为正，也是回路电流）、端电压（V）、结压降（V）、存储电荷（C） */
   i: Float64Array
-  iS: Float64Array
   v: Float64Array
   vj: Float64Array
   q: Float64Array
@@ -145,50 +157,39 @@ export interface Waveform {
   t90: number | null
 }
 
-/** 换流电感 L = (U_R + U_F)/(di_F/dt)（H） */
-export function commutationL(p: SwitchParams, j = J_REF) {
-  return (p.VR + diodeV(p.IF, j)) / p.didt
-}
-
 /**
- * 一次开通或关断：从稳态开始，算到换流结束后 1.6τ（关断）或 2.5τ（开通）。
+ * 一次开通或关断：从稳态开始，算到切换后 1.6τ（关断）或 2.5τ（开通）。
  * 开通时存储电荷按 dQ/dt = I_F − Q/τ 增长，到 0.9Q_F 约需 2.3τ；结电压由结边浓度决定，涨得比 Q 快
  */
-export function simulate(kind: SwitchKind, p: SwitchParams, j: Junction = J_REF): Waveform {
+export function simulate(kind: SwitchKind, p: SwitchParams, j: Junction = J_REF, L = L_LOOP): Waveform {
   const { VT, Is, RS } = j
   const dt = DS * TAU
-  const L = commutationL(p, j)
-  const { Cs } = SNUBBER
-  const Rs = 2 * SNUBBER.zeta * Math.sqrt(L / Cs)
-  const n = Math.ceil((p.IF / p.didt + (kind === 'off' ? 1.6 : 2.5) * TAU) / dt)
+  const { U1, UR } = sources(p, j)
+  const n = Math.ceil(((kind === 'off' ? 1.6 : 2.5) * TAU) / dt)
 
   let base: Base
   let vj: number
-  let iL: number
   if (kind === 'off') {
     const u0 = p.IF / Is / Base.steadyGain()
     base = new Base(u0)
     vj = VT * Math.log1p(u0)
-    iL = 0
   } else {
-    base = new Base(Math.expm1(-p.VR / VT))
-    vj = -p.VR
-    iL = p.IF
+    base = new Base(Math.expm1(-UR / VT))
+    vj = -UR
   }
   let iD = kind === 'off' ? p.IF : Is * base.u0 * Base.steadyGain()
   let vD = vj + RS * iD
-  let vCs = vD
+  /** 切换后的电源电压 */
+  const Us = kind === 'off' ? -UR : U1
 
   const out = {
     i: new Float64Array(n + 1),
-    iS: new Float64Array(n + 1),
     v: new Float64Array(n + 1),
     vj: new Float64Array(n + 1),
     q: new Float64Array(n + 1),
   }
   const record = (k: number) => {
     out.i[k] = iD
-    out.iS[k] = iL
     out.v[k] = vD
     out.vj[k] = vj
     out.q[k] = Is * TAU * base.integral()
@@ -198,14 +199,13 @@ export function simulate(kind: SwitchKind, p: SwitchParams, j: Junction = J_REF)
   for (let k = 1; k <= n; k++) {
     const { a, b } = base.prepare()
     const qOld = qB(vj, j)
-    const iLon = Math.max(0, p.IF - p.didt * k * dt)
-    // 节点电流平衡 h(U_j) = i_D + i_snub + i_L − I_F，随 U_j 单调增加，二分求解
+    // 回路方程 L·di/dt = U_s − u_D − R·i（隐式欧拉）；h(U_j) = i_D − i_回路，随 U_j 单调增加，二分求解
+    const iOld = iD
     const solveAt = (V: number) => {
       const id = Is * (a + b * Math.expm1(V / VT)) + (qB(V, j) - qOld) / dt
       const v = V + RS * id
-      const isn = (v - vCs) / (Rs + dt / Cs)
-      const il = kind === 'off' ? iL + (dt * (p.VR + v)) / L : iLon
-      return { h: id + isn + il - p.IF, id, v, isn, il }
+      const il = L > 0 ? (iOld + (dt / L) * (Us - v)) / (1 + (dt * R_LIM) / L) : (Us - v) / R_LIM
+      return { h: id - il, id, v }
     }
     let lo = -60
     let hi = 1.2
@@ -218,8 +218,6 @@ export function simulate(kind: SwitchKind, p: SwitchParams, j: Junction = J_REF)
     const s = solveAt(vj)
     iD = s.id
     vD = s.v
-    iL = s.il
-    vCs += (dt * s.isn) / Cs
     base.commit(Math.expm1(vj / VT))
     record(k)
   }
@@ -234,61 +232,46 @@ export function simulate(kind: SwitchKind, p: SwitchParams, j: Junction = J_REF)
 }
 
 /**
- * 反向恢复参数（IEC 60747-2 与数据手册的通行符号）：
- *  - t₀：电流过零；t₁：反向电流达到峰值 I_RM；
- *  - t₂：过 0.9 I_RM 与 0.25 I_RM 两点的直线外推到零（IEC 60747-2 的做法，教材图中 t₂ 是电流"接近零"的时刻）；
- *  - t_a = t₁ − t₀，t_b = t₂ − t₁，t_rr = t₂ − t₀；
- *  - U_RM：反向电压峰值；Q_rr：t₀–t₂ 之间反向电流的面积。
+ * 反向恢复参数（电阻法，时间从电流过零 t₀ 算起，与数据手册的量法相同）：
+ *  - t₀：开关切换后电流过零（回路电感使它略晚于切换）；
+ *  - 存储时间 t_s：t₀ 到结电压过零，此前结边仍有多余少子、结仍正偏，反向电流由电阻限定；
+ *  - t_rr：t₀ 到反向电流衰减到 0.25 I_R（I_R = U_R/R），t_f = t_rr − t_s；
+ *  - Q_rr：t₀–t₀ + t_rr 之间反向电流的面积。
  */
 function metrics(w: Waveform): RecoveryMetrics {
-  const { i, v, dt } = w
+  const { i, v, vj, dt } = w
   const n = i.length
-  const k0 = i.findIndex((x) => x < 0)
-  let k1 = k0
-  for (let k = k0; k < n; k++) if (i[k] < i[k1]) k1 = k
-  const IRP = -i[k1]
-  /** k1 之后反向电流第一次降到 f·I_RM 的时刻（线性插值） */
-  const fall = (f: number) => {
-    for (let k = k1 + 1; k < n; k++) {
-      if (-i[k] <= f * IRP) return (k - 1 + (-i[k - 1] - f * IRP) / (i[k] - i[k - 1])) * dt
-    }
+  /** 数组 a 第一次从正变为非正的时刻（线性插值） */
+  const cross = (a: Float64Array) => {
+    for (let k = 1; k < n; k++) if (a[k] <= 0 && a[k - 1] > 0) return (k - 1 + a[k - 1] / (a[k - 1] - a[k])) * dt
     return (n - 1) * dt
   }
-  const ta = fall(0.9)
-  const tb = fall(0.25)
-  const t2 = ta + ((tb - ta) * 0.9) / (0.9 - 0.25)
-  // 过零时刻按线性插值
-  const t0 = (k0 - 1 + i[k0 - 1] / (i[k0 - 1] - i[k0])) * dt
-  const t1 = k1 * dt
-  let URP = 0
-  for (let k = 0; k < n; k++) URP = Math.max(URP, -v[k])
-  let Qrr = 0
-  const k2 = Math.min(n - 1, Math.floor(t2 / dt))
-  for (let k = k0; k <= k2; k++) Qrr -= i[k] * dt
-  const kv = v.findIndex((x) => x < 0)
-  return {
-    t0,
-    t1,
-    t2,
-    td: t1 - t0,
-    tf: t2 - t1,
-    trr: t2 - t0,
-    IRP,
-    URP,
-    Qrr,
-    tv0: kv * dt,
-    fit: [[ta, -0.9 * IRP], [tb, -0.25 * IRP]],
+  const t0 = cross(i)
+  const tBlock = cross(vj)
+  const lim = IRR_FRAC * w.p.IR
+  let tEnd = (n - 1) * dt
+  for (let k = Math.ceil(tBlock / dt); k < n; k++) {
+    if (-i[k] <= lim) {
+      tEnd = (k - 1 + (-i[k - 1] - lim) / (i[k] - i[k - 1])) * dt
+      break
+    }
   }
+  let Qrr = 0
+  let IRmax = 0
+  const k2 = Math.min(n - 1, Math.floor(tEnd / dt))
+  for (let k = 1; k <= k2; k++) Qrr -= Math.min(0, i[k]) * dt
+  for (let k = 0; k < n; k++) IRmax = Math.max(IRmax, -i[k])
+  return { t0, ts: tBlock - t0, tf: tEnd - tBlock, trr: tEnd - t0, tBlock, tEnd, IRmax, Qrr, tv0: cross(v) }
 }
 
-/** 换流开始后 t 秒（t < 0 为开始前的稳态）的瞬时值，线性插值 */
+/** 切换后 t 秒（t < 0 为切换前的稳态）的瞬时值，线性插值 */
 export function sampleAt(w: Waveform, t: number) {
   const n = w.i.length - 1
   const x = Math.max(0, Math.min(n, t / w.dt))
   const k = Math.min(n - 1, Math.floor(x))
   const f = x - k
   const at = (a: Float64Array) => a[k] + (a[k + 1] - a[k]) * f
-  return { i: at(w.i), iS: at(w.iS), v: at(w.v), vj: at(w.vj), q: at(w.q) }
+  return { i: at(w.i), v: at(w.v), vj: at(w.vj), q: at(w.q) }
 }
 
 /** 波形总时长 s */

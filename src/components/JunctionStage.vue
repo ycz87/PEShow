@@ -84,14 +84,14 @@ function syncSw() {
   swLive.value = ctl.live()
   emit('update:sw', swLive.value)
 }
-/** 控制条上的操作（换流按钮、改 I_F 与 di/dt）：暂停时也立即刷新，并恢复播放 */
+/** 控制条上的操作（拨开关的按钮、改 I_F 与 I_R）：暂停时也立即刷新，并恢复播放 */
 function onSwitch(act: () => void) {
   act()
   syncSw()
   playing.value = true
 }
 
-/** 重新开始：开关过程重新换流；"结的形成"由页面把形成进度归零、重新播放；其余只重新布置粒子 */
+/** 重新开始：开关过程重新切换；"结的形成"由页面把形成进度归零、重新播放；其余只重新布置粒子 */
 function replay() {
   if (swOn.value) onSwitch(() => ctl.arm(ctl.spec.auto))
   else if (props.step.formation) emit('replay')
@@ -158,6 +158,8 @@ function applyStep(s: Step) {
   acOn.value = s.tools.includes('ac')
   if (s.switching) {
     ctl.setMode(s.switching.mode)
+    // 上一步可能停在了自动暂停点上；换步后重新准备，要接着播放
+    playing.value = true
     swNow.value = null
     syncSw()
   } else {

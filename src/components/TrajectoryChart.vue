@@ -30,7 +30,7 @@ const vR = computed(() => {
 const iR = computed(() => {
   const x = w.value
   if (!x) return { lo: -1, hi: 1 }
-  return { lo: -(r.value?.IRP ?? 0) * 1e3 * 1.2, hi: x.p.IF * 1e3 * 1.3 }
+  return { lo: -(r.value?.IRmax ?? 0) * 1e3 * 1.2, hi: x.p.IF * 1e3 * 1.3 }
 })
 const X = (v: number) => m.l + ((v - vR.value.lo) / (vR.value.hi - vR.value.lo)) * pw
 const Y = (iA: number) => m.t + ((iR.value.hi - iA * 1e3) / (iR.value.hi - iR.value.lo)) * ph
@@ -59,7 +59,7 @@ const staticPath = computed(() => {
   return d
 })
 
-/** 光标（换流开始后的时刻）及之前的轨迹 */
+/** 光标（开关切换后的时刻）及之前的轨迹 */
 const t = computed(() => {
   const p = props.live?.phase
   return p === 'settle' || p === 'ready' ? 0 : props.live?.t ?? 0
@@ -73,12 +73,12 @@ const pathTo = computed(() => {
   return d
 })
 const now = computed(() => (w.value ? sampleAt(w.value, t.value) : null))
-/** t₀、t₁、t₂ 处的工作点（光标走到才出现） */
+/** t₀、t_s、t_rr 结束处的工作点（光标走到才出现） */
 const dots = computed(() => {
   const x = w.value
   const q = r.value
   if (!x || !q) return []
-  return ([['0', q.t0], ['1', q.t1], ['2', q.t2]] as const)
+  return ([['0', q.t0], ['s', q.tBlock], ['rr', q.tEnd]] as const)
     .filter(([, tt]) => t.value >= tt)
     .map(([k, tt]) => ({ k, ...sampleAt(x, tt) }))
 })

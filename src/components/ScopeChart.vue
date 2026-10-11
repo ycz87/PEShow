@@ -1,16 +1,16 @@
 <script setup lang="ts">
-// 动态特性（0.8）：二极管电流 i(t)（上）与端电压 u(t)（下），像示波器一样随舞台上的换流过程逐渐画出。
-// 波形由扩散方程与外电路联立算出（recovery.ts）；关断时按步骤逐渐标出 t₀、t₁、t₂、I_RM、U_RM、Q_rr 等
+// 动态特性（0.8）：二极管电流 i(t)（上）与端电压 u(t)（下），像示波器一样随舞台上的开关过程逐渐画出。
+// 波形由扩散方程与外电路联立算出（recovery.ts）；关断时按步骤逐渐标出 I_R、t_s、t_f、t_rr、Q_rr
 import { computed, useId } from 'vue'
 import Bi from './Bi.vue'
 import { tx } from '../app/settings'
 import { minus } from '../app/format'
 import { endTime, type SwitchLive } from '../app/switching'
-import { sampleAt, type SwitchKind, type Waveform } from '../engine/physics/recovery'
+import { IRR_FRAC, sampleAt, sources, type SwitchKind, type Waveform } from '../engine/physics/recovery'
 import { diodeV } from '../engine/physics/pn'
 import { UI } from '../devices/pn-junction/sections/ui'
 
-/** fixed：只画某一种过程的完整波形（开通与关断对比一步）；不给时跟着舞台的换流过程画 */
+/** fixed：只画某一种过程的完整波形（开通与关断对比一步）；不给时跟着舞台的开关过程画 */
 const props = defineProps<{ live: SwitchLive | null; fixed?: SwitchKind }>()
 const U = UI.scope
 
@@ -26,7 +26,7 @@ const iBot = iTop + panelH
 const vTop = iBot + GAP
 const vBot = vTop + panelH
 
-/** 换流开始前显示 1 µs 的稳态 */
+/** 开关切换前显示 1 µs 的稳态 */
 const T0 = -1e-6
 const w = computed(() => (props.fixed ? props.live?.pair?.[props.fixed] : props.live?.w) ?? null)
 const ghost = computed(() => (props.fixed ? props.live?.ghostPair?.[props.fixed] : props.live?.ghost) ?? null)
@@ -72,7 +72,7 @@ const iTicks = computed(() => ticks(iR.value.lo, iR.value.hi, 5))
 const vTicks = computed(() => ticks(vR.value.lo, vR.value.hi, 4))
 const tTicks = computed(() => ticks(0, T1.value * 1e6, 10))
 
-/** 波形折线（约 500 点），前面接一段换流前的稳态 */
+/** 波形折线（约 500 点），前面接一段切换前的稳态 */
 function trace(x: Waveform, a: Float64Array, Y: (v: number) => number, scale = 1) {
   const n = Math.min(a.length - 1, Math.round(endTime(x) / x.dt))
   const stride = Math.max(1, Math.ceil(n / 500))
@@ -95,7 +95,7 @@ const ghostPaths = computed(() => {
   return x ? { i: trace(x, x.i, Yi), v: trace(x, x.v, Yv) } : null
 })
 
-// ── 光标：换流开始后的时刻；画到光标为止
+// ── 光标：开关切换后的时刻；画到光标为止
 const t = computed(() => props.live?.t ?? 0)
 const tShow = computed(() => {
   if (whole.value) return w.value ? endTime(w.value) : 0
@@ -106,31 +106,23 @@ const cursorX = computed(() => X(tShow.value))
 const now = computed(() => (w.value && !whole.value ? sampleAt(w.value, tShow.value) : null))
 
 // ── 标注：随步骤逐渐增加，而且光标走到那一刻才出现
-const LEVEL: Record<string, number> = { intro: 0, off: 1, peak: 2, recover: 3, vi: 3 }
+const LEVEL: Record<string, number> = { intro: 0, off: 1, block: 2, recover: 3, vi: 3 }
 const level = computed(() => (props.fixed ? 3 : props.live ? LEVEL[props.live.mode] ?? 0 : 0))
 const done = computed(() => whole.value || props.live?.phase === 'done')
 const reached = (time: number) => done.value || tShow.value >= time - 1e-12
 
 const mk = computed(() => w.value?.m ?? null)
-/** Q_rr 阴影：t₀–t₂ 之间反向电流与零线围成的面积 */
+/** Q_rr 阴影：t₀ 到恢复结束之间反向电流与零线围成的面积 */
 const qrrPath = computed(() => {
   const x = w.value
   const r = mk.value
   if (!x || !r) return ''
-  const k0 = Math.ceil(r.t0 / x.dt)
-  const k2 = Math.min(x.i.length - 1, Math.floor(r.t2 / x.dt))
+  const k2 = Math.min(x.i.length - 1, Math.floor(r.tEnd / x.dt))
   let d = `M${X(r.t0).toFixed(1)} ${Yi(0).toFixed(1)}`
-  for (let k = k0; k <= k2; k += 2) d += `L${X(k * x.dt).toFixed(1)} ${Yi(x.i[k]).toFixed(1)}`
+  for (let k = Math.ceil(r.t0 / x.dt); k <= k2; k += 2) d += `L${X(k * x.dt).toFixed(1)} ${Yi(Math.min(0, x.i[k])).toFixed(1)}`
   return `${d}L${X(k2 * x.dt).toFixed(1)} ${Yi(0).toFixed(1)}Z`
 })
-/** 关断的谷底：电压最负处 */
-const vPeak = computed(() => {
-  const x = w.value
-  if (!x || !mk.value) return null
-  let k = 0
-  for (let q = 1; q < x.v.length; q++) if (x.v[q] < x.v[k]) k = q
-  return { t: k * x.dt, v: x.v[k] }
-})
+const UR = computed(() => (w.value ? sources(w.value.p).UR : 0))
 const UF = computed(() => (w.value ? diodeV(w.value.p.IF) : 0))
 
 /** 此刻处在哪个阶段（讲解提示） */
@@ -146,8 +138,8 @@ const phaseText = computed(() => {
   const r = x.m!
   if (before) return P.offBefore
   if (tShow.value < r.t0) return P.offFall
-  if (tShow.value < r.t1) return P.offRev
-  if (tShow.value < r.t2) return P.offBlock
+  if (tShow.value < r.tBlock) return P.offRev
+  if (tShow.value < r.tEnd) return P.offBlock
   return P.offDone
 })
 
@@ -155,12 +147,12 @@ const phaseText = computed(() => {
 const f = (v: number, d: number) => minus(v.toFixed(d))
 const us = (s: number) => `${(s * 1e6).toFixed(2)} µs`
 const metricRows = computed(() => {
-  const rows: { cls: string; r: NonNullable<Waveform['m']>; QF: number }[] = []
-  if (mk.value && w.value && level.value >= 3 && done.value) rows.push({ cls: 'cur', r: mk.value, QF: w.value.QF })
-  if (ghost.value?.m) rows.push({ cls: 'old', r: ghost.value.m, QF: ghost.value.QF })
+  const rows: { cls: string; r: NonNullable<Waveform['m']>; QF: number; IR: number }[] = []
+  if (mk.value && w.value && level.value >= 3 && done.value) rows.push({ cls: 'cur', r: mk.value, QF: w.value.QF, IR: w.value.p.IR })
+  if (ghost.value?.m) rows.push({ cls: 'old', r: ghost.value.m, QF: ghost.value.QF, IR: ghost.value.p.IR })
   return rows
 })
-const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt = ${Math.round(x.p.didt / 1e3)} mA/µs`
+const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, I_R = ${Math.round(x.p.IR * 1e3)} mA`
 </script>
 
 <template>
@@ -202,18 +194,24 @@ const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt =
         <path :d="ghostPaths.v" class="trace v" />
       </g>
 
-      <!-- 恒定的参考线：开通的 I_F（= Q_F）与 U_F；关断的 −U_R -->
+      <!-- 恒定的参考线：开通的 I_F（= Q_F）与 U_F；关断的 −I_R、0.25 I_R 与 −U_R -->
       <template v-if="isOn">
         <line :x1="m.l" :x2="m.l + pw" :y1="Yi(w.p.IF)" :y2="Yi(w.p.IF)" class="level" />
         <text :x="m.l + pw + 4" :y="Yi(w.p.IF) + 4" class="lbl">I<tspan class="sub" dy="3">F</tspan><tspan dy="-3">, Q</tspan><tspan class="sub" dy="3">F</tspan></text>
         <line :x1="m.l" :x2="m.l + pw" :y1="Yv(UF)" :y2="Yv(UF)" class="level" />
         <text :x="m.l + pw + 4" :y="Yv(UF) + 4" class="lbl">U<tspan class="sub" dy="3">F</tspan></text>
-        <line :x1="m.l" :x2="m.l + pw" :y1="Yv(-w.p.VR)" :y2="Yv(-w.p.VR)" class="level" />
-        <text :x="m.l + pw + 4" :y="Yv(-w.p.VR) + 4" class="lbl">−U<tspan class="sub" dy="3">R</tspan></text>
+        <line :x1="m.l" :x2="m.l + pw" :y1="Yv(-UR)" :y2="Yv(-UR)" class="level" />
+        <text :x="m.l + pw + 4" :y="Yv(-UR) + 4" class="lbl">−U<tspan class="sub" dy="3">R</tspan></text>
       </template>
-      <template v-else-if="level >= 3">
-        <line :x1="m.l" :x2="m.l + pw" :y1="Yv(-w.p.VR)" :y2="Yv(-w.p.VR)" class="level" />
-        <text :x="m.l + pw + 4" :y="Yv(-w.p.VR) + 4" class="lbl">−U<tspan class="sub" dy="3">R</tspan></text>
+      <template v-else-if="level >= 1">
+        <line :x1="m.l" :x2="m.l + pw" :y1="Yi(-w.p.IR)" :y2="Yi(-w.p.IR)" class="level" />
+        <text :x="m.l + pw + 4" :y="Yi(-w.p.IR) + 4" class="lbl">−I<tspan class="sub" dy="3">R</tspan></text>
+        <line :x1="m.l" :x2="m.l + pw" :y1="Yv(-UR)" :y2="Yv(-UR)" class="level" />
+        <text :x="m.l + pw + 4" :y="Yv(-UR) + 4" class="lbl">−U<tspan class="sub" dy="3">R</tspan></text>
+        <template v-if="level >= 3">
+          <line :x1="m.l" :x2="m.l + pw" :y1="Yi(-IRR_FRAC * w.p.IR)" :y2="Yi(-IRR_FRAC * w.p.IR)" class="lim" />
+          <text :x="m.l + pw + 4" :y="Yi(-IRR_FRAC * w.p.IR) + 4" class="lbl lim-t">{{ IRR_FRAC }}I<tspan class="sub" dy="3">R</tspan></text>
+        </template>
       </template>
 
       <!-- 本次波形：画到光标为止 -->
@@ -226,35 +224,24 @@ const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt =
 
       <!-- 关断的特征时刻与参数 -->
       <g v-if="mk" class="marks">
-        <!-- di_F/dt 只在前几步标出；第 3 级标注的 t_rr 横线会穿过它 -->
-        <text v-if="level < 3 && reached(mk.t0 / 2)" :x="X(mk.t0 / 2) + 6" :y="Yi(w.p.IF / 2) - 4" class="lbl">di<tspan class="sub" dy="3">F</tspan><tspan dy="-3">/dt</tspan></text>
         <template v-if="level >= 1 && reached(mk.t0)">
           <line :x1="X(mk.t0)" :x2="X(mk.t0)" :y1="iTop" :y2="vBot" class="tmark" />
-          <text :x="X(mk.t0)" :y="iTop - 8" text-anchor="middle" class="lbl">t<tspan class="sub" dy="3">0</tspan></text>
+          <text :x="X(mk.t0) + 2" :y="iTop - 8" text-anchor="start" class="lbl">t<tspan class="sub" dy="3">0</tspan></text>
         </template>
-        <template v-if="level >= 2 && reached(mk.t1)">
-          <line :x1="X(mk.t1)" :x2="X(mk.t1)" :y1="iTop" :y2="vBot" class="tmark" />
-          <text :x="X(mk.t1)" :y="iTop - 8" text-anchor="middle" class="lbl">t<tspan class="sub" dy="3">1</tspan></text>
-          <circle :cx="X(mk.t1)" :cy="Yi(-mk.IRP)" r="3.5" class="pt" />
-          <text :x="X(mk.t1) - 6" :y="Yi(-mk.IRP) + 4" text-anchor="end" class="lbl">I<tspan class="sub" dy="3">RM</tspan></text>
+        <template v-if="level >= 2 && reached(mk.tBlock)">
+          <line :x1="X(mk.tBlock)" :x2="X(mk.tBlock)" :y1="iTop" :y2="vBot" class="tmark" />
+          <text v-if="level < 3" :x="X(mk.tBlock)" :y="iTop - 8" text-anchor="middle" class="lbl">{{ tx(U.blockAt) }}</text>
         </template>
-        <template v-if="level >= 3 && reached(mk.t2)">
-          <line :x1="X(mk.t2)" :x2="X(mk.t2)" :y1="iTop" :y2="vBot" class="tmark" />
-          <text :x="X(mk.t2)" :y="iTop - 8" text-anchor="middle" class="lbl">t<tspan class="sub" dy="3">2</tspan></text>
-          <line :x1="X(mk.fit[0][0])" :y1="Yi(mk.fit[0][1])" :x2="X(mk.t2)" :y2="Yi(0)" class="fit" />
-          <circle v-for="(p, k) in mk.fit" :key="'fp' + k" :cx="X(p[0])" :cy="Yi(p[1])" r="2.5" class="fit-pt" />
-          <!-- t_a、t_b、t_rr 画在零线上方的空白处 -->
+        <template v-if="level >= 3 && reached(mk.tEnd)">
+          <line :x1="X(mk.tEnd)" :x2="X(mk.tEnd)" :y1="iTop" :y2="vBot" class="tmark" />
+          <!-- t_s、t_f、t_rr 画在零线上方的空白处 -->
           <g class="span">
-            <path :d="`M${X(mk.t0)} ${Yi(w.p.IF * 0.3)} H${X(mk.t1)} M${X(mk.t1)} ${Yi(w.p.IF * 0.3)} H${X(mk.t2)}`" />
-            <path :d="`M${X(mk.t0)} ${Yi(w.p.IF * 0.75)} H${X(mk.t2)}`" />
-            <text :x="(X(mk.t0) + X(mk.t1)) / 2" :y="Yi(w.p.IF * 0.3) - 4" text-anchor="middle">t<tspan class="sub" dy="3">a</tspan></text>
-            <text :x="(X(mk.t1) + X(mk.t2)) / 2" :y="Yi(w.p.IF * 0.3) - 4" text-anchor="middle">t<tspan class="sub" dy="3">b</tspan></text>
-            <text :x="(X(mk.t0) + X(mk.t2)) / 2" :y="Yi(w.p.IF * 0.75) - 4" text-anchor="middle">t<tspan class="sub" dy="3">rr</tspan></text>
+            <path :d="`M${X(mk.t0)} ${Yi(w.p.IF * 0.3)} H${X(mk.tBlock)} M${X(mk.tBlock)} ${Yi(w.p.IF * 0.3)} H${X(mk.tEnd)}`" />
+            <path :d="`M${X(mk.t0)} ${Yi(w.p.IF * 0.75)} H${X(mk.tEnd)}`" />
+            <text :x="(X(mk.t0) + X(mk.tBlock)) / 2" :y="Yi(w.p.IF * 0.3) - 4" text-anchor="middle">t<tspan class="sub" dy="3">s</tspan></text>
+            <text :x="(X(mk.tBlock) + X(mk.tEnd)) / 2" :y="Yi(w.p.IF * 0.3) - 4" text-anchor="middle">t<tspan class="sub" dy="3">f</tspan></text>
+            <text :x="(X(mk.t0) + X(mk.tEnd)) / 2" :y="Yi(w.p.IF * 0.75) - 4" text-anchor="middle">t<tspan class="sub" dy="3">rr</tspan></text>
           </g>
-        </template>
-        <template v-if="level >= 3 && vPeak && reached(vPeak.t)">
-          <circle :cx="X(vPeak.t)" :cy="Yv(vPeak.v)" r="3.5" class="pt" />
-          <text :x="X(vPeak.t) + 6" :y="Yv(vPeak.v) + 12" class="lbl">U<tspan class="sub" dy="3">RM</tspan></text>
         </template>
       </g>
       <!-- 开通：存储电荷堆到 90% 的时刻 -->
@@ -279,7 +266,7 @@ const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt =
       <li v-if="isOn"><i class="sw q" /><Bi :t="U.charge" /> Q(t)</li>
       <li v-if="ghost"><i class="sw ghost" /><Bi :t="U.ghost" /></li>
       <li v-if="level >= 3 && !isOn"><i class="sw qrr" /><Bi :t="U.qrr" /></li>
-      <li v-if="level >= 3 && !isOn"><i class="sw fit" /><Bi :t="U.fit" /></li>
+      <li v-if="level >= 3 && !isOn"><i class="sw fit" /><Bi :t="U.lim" /></li>
     </ul>
 
     <div v-if="now && w" class="readout">
@@ -293,10 +280,9 @@ const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt =
       <thead>
         <tr>
           <th />
-          <th>I<sub>RM</sub></th>
-          <th>U<sub>RM</sub></th>
-          <th>t<sub>a</sub></th>
-          <th>t<sub>b</sub></th>
+          <th>I<sub>R</sub></th>
+          <th>t<sub>s</sub></th>
+          <th>t<sub>f</sub></th>
           <th>t<sub>rr</sub></th>
           <th>Q<sub>rr</sub> / Q<sub>F</sub></th>
         </tr>
@@ -304,9 +290,8 @@ const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt =
       <tbody>
         <tr v-for="row in metricRows" :key="row.cls" :class="row.cls" :title="row.cls === 'cur' ? ifText(w!) : ghost ? ifText(ghost) : ''">
           <th><Bi :t="row.cls === 'cur' ? U.now : U.ghost" /></th>
-          <td>{{ (row.r.IRP * 1e3).toFixed(1) }} mA</td>
-          <td>{{ row.r.URP.toFixed(2) }} V</td>
-          <td>{{ (row.r.td * 1e6).toFixed(2) }} µs</td>
+          <td>{{ Math.round(row.IR * 1e3) }} mA</td>
+          <td>{{ (row.r.ts * 1e6).toFixed(2) }} µs</td>
           <td>{{ (row.r.tf * 1e6).toFixed(2) }} µs</td>
           <td>{{ (row.r.trr * 1e6).toFixed(2) }} µs</td>
           <td>{{ (row.r.Qrr * 1e9).toFixed(1) }} / {{ (row.QF * 1e9).toFixed(0) }} nC</td>
@@ -370,12 +355,12 @@ const ifText = (x: Waveform) => `I_F = ${Math.round(x.p.IF * 1e3)} mA, di_F/dt =
   stroke: var(--ink);
   stroke-width: 1.8;
 }
-.fit {
+.lim {
   stroke: var(--accent);
   stroke-width: 1.5;
   stroke-dasharray: 6 4;
 }
-.fit-pt { fill: var(--accent); }
+.lbl.lim-t { fill: var(--accent); }
 .span path {
   stroke: var(--ink-soft);
   stroke-width: 1.2;

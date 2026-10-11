@@ -165,7 +165,7 @@ const keys = computed(() => ({
 
 // ── 拖动
 const clipId = `vi-clip-${useId()}`
-/** 开关过程（0.8）里电压由换流决定，静态曲线只作对照，不能拖 */
+/** 开关过程（0.8）里电压由外电路决定，静态曲线只作对照，不能拖 */
 const locked = computed(() => !!props.step.switching)
 const listeners = useChartDrag({
   width: W,
