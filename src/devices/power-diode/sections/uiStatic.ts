@@ -152,6 +152,11 @@ export const UI_STATIC = {
     char: { zh: '特性值', en: 'Characteristic' },
     cond: { zh: '测试条件', en: 'Test condition' },
   },
+  /** 参数表不和图联动时（1.4）用的提示 */
+  kindHintPlain: {
+    zh: '额定值是"限速牌"：任何时候都不能超过；特性值是"体检报告"：在规定条件下测得，换了条件就会变。',
+    en: 'Ratings are speed limits: never exceed them. Characteristics are a health check: measured under stated conditions.',
+  },
   kindHint: {
     zh: '额定值是"限速牌"：任何时候都不能超过；特性值是"体检报告"：在规定条件下测得，换了条件就会变。点一行，在图上看它的位置。',
     en: 'Ratings are speed limits: never exceed them. Characteristics are a health check: measured under stated conditions. Click a row to see it on the plots.',

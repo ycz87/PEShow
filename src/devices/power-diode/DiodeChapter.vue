@@ -16,6 +16,10 @@ import PinStaticAll from '../../components/PinStaticAll.vue'
 import PinStaticFwd from '../../components/PinStaticFwd.vue'
 import PinStaticRev from '../../components/PinStaticRev.vue'
 import PinStaticTemp from '../../components/PinStaticTemp.vue'
+import PinDynOn from '../../components/PinDynOn.vue'
+import PinDynOff from '../../components/PinDynOff.vue'
+import PinDynSoft from '../../components/PinDynSoft.vue'
+import PinDynDidt from '../../components/PinDynDidt.vue'
 // 3D 舞台带着 Three.js，只在进入 1.2 的 3D 步骤时才加载
 const Diode3DStage = defineAsyncComponent(() => import('../../components/Diode3DStage.vue'))
 import PinVA from '../../components/PinVA.vue'
@@ -99,6 +103,10 @@ const TEXT = {
       <PinStaticFwd v-else-if="step.mode === 'staticFwd'" />
       <PinStaticRev v-else-if="step.mode === 'staticRev'" />
       <PinStaticTemp v-else-if="step.mode === 'staticTemp'" />
+      <PinDynOn v-else-if="step.mode === 'dynOn'" />
+      <PinDynOff v-else-if="step.mode === 'dynOff'" />
+      <PinDynDidt v-else-if="step.mode === 'dynDidt'" />
+      <PinDynSoft v-else-if="step.mode === 'dynSoft'" />
       <section v-else class="wip panel"><Bi :t="UI.wip" /></section>
     </template>
 

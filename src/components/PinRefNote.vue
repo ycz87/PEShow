@@ -1,9 +1,11 @@
 <script setup lang="ts">
-// 1.3 各步顶部的器件说明：曲线来自示例 PiN（理想化模型），手册数值来自哪几份真实数据手册（附官网链接与版本）
+// 1.3、1.4 各步顶部的器件说明：曲线来自示例 PiN（理想化模型），手册数值来自哪几份真实数据手册（附官网链接与版本）。
+// extra = false 时只列 STTH3012（1.4）
 import Bi from './Bi.vue'
 import Rich from './Rich.vue'
 import { UI_STATIC } from '../devices/power-diode/sections/uiStatic'
 
+withDefaults(defineProps<{ extra?: boolean }>(), { extra: true })
 const U = UI_STATIC.ref
 const MAIN = { name: 'STTH3012', doc: 'DS4653 Rev 3（2023-12）', url: 'https://www.st.com/resource/en/datasheet/stth3012.pdf' }
 const EXTRA = [
@@ -20,7 +22,7 @@ const EXTRA = [
       <Rich :t="U.real" class="rn-inline" />
       <a :href="MAIN.url" target="_blank" rel="noopener">{{ MAIN.name }} {{ MAIN.doc }}</a>
     </p>
-    <p class="rn-line">
+    <p v-if="extra" class="rn-line">
       <Rich :t="U.extra" class="rn-inline" />
       <template v-for="(d, k) in EXTRA" :key="d.name">
         <a :href="d.url" target="_blank" rel="noopener">{{ d.name }} {{ d.doc }}</a><span v-if="k < EXTRA.length - 1">；</span>

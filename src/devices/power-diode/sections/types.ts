@@ -25,11 +25,18 @@ export type { Formula, Line, Mood } from '../../common/content'
  * - staticFwd：正向特性、直线近似与正向参数
  * - staticRev：反向特性、击穿与反向参数
  * - staticTemp：温度对正向、反向特性与参数的影响
+ *
+ * 1.4 的各步（测试电路 + 波形 + N⁻ 区载流子分布，时间游标）：
+ * - dynOn：开通，正向恢复
+ * - dynOff：关断，反向恢复
+ * - dynDidt：手册的 di_F/dt 测法（t_a、t_b、I_RM、软度）与动态参数表
+ * - dynSoft：软恢复与硬恢复（手册测法下叠在一张图上）
  */
 export type PinMode =
   | 'apps' | 'dilemma' | 'structure' | 'reverse' | 'ohmic' | 'forward' | 'result'
   | 'symbol' | 'section' | 'to247' | 'pressfit' | 'packages'
   | 'staticAll' | 'staticFwd' | 'staticRev' | 'staticTemp'
+  | 'dynOn' | 'dynOff' | 'dynDidt' | 'dynSoft'
 
 /**
  * 舞台工具

@@ -125,43 +125,43 @@ describe('1.3 静态特性（端电压 = 芯片 + 串联电阻）', () => {
   })
 })
 
-describe('1.4 开关瞬态（双脉冲，600 V，30 A，500 A/µs，25 °C）', () => {
-  it('开通：U_FRM 约 13 V，几十纳秒内出现，之后回落到稳态', () => {
-    const r = forwardRecoveryOf(turnOn())
-    near(r.UFRM, 12.6, 0.08)
-    expect(r.tPeak).toBeGreaterThan(15e-9)
-    expect(r.tPeak).toBeLessThan(45e-9)
-    near(r.UF, 1.53, 0.03)
+describe('1.4 开关瞬态（电阻法：600 V、20 Ω、回路电感 0.3 µH，30 A，25 °C）', () => {
+  const on = turnOn({}, 0.6e-6, 3e-9)
+  const off = turnOff()
+  it('开通：U_FRM 约 18 V，十几纳秒出现，之后回落到 1.3 的端电压 1.77 V 附近', () => {
+    const r = forwardRecoveryOf(on)
+    near(r.UFRM, 18, 0.08)
+    expect(r.tPeak).toBeGreaterThan(8e-9)
+    expect(r.tPeak).toBeLessThan(25e-9)
+    expect(r.UF).toBeGreaterThan(1.77)
+    expect(r.UF).toBeLessThan(2.1)
   })
-  it('开通：di/dt 越大，U_FRM 越高', () => {
-    const a = forwardRecoveryOf(turnOn({ didt: 200e6 })).UFRM
-    const b = forwardRecoveryOf(turnOn({ didt: 1000e6 })).UFRM
-    expect(b).toBeGreaterThan(a)
+  it('开通：回路电感越小（电流涨得越快），U_FRM 越高', () => {
+    const fast = forwardRecoveryOf(turnOn({ L: 0.1e-6 }, 0.1e-6)).UFRM
+    expect(fast).toBeGreaterThan(forwardRecoveryOf(on).UFRM)
   })
-  it('关断：I_RM 约 46 A、t_rr 约 100 ns、Q_rr 约 2.3 µC、硬恢复（软度 < 0.3）', () => {
-    const w = turnOff()
-    near(w.Q0, 6e-6, 0.01)
-    const r = recoveryOf(w)
-    near(r.IRM, 45.7, 0.1)
-    near(r.trr, 100e-9, 0.15)
-    near(r.Qrr, 2.34e-6, 0.12)
-    expect(r.S).toBeLessThan(0.3)
-    expect(r.URM).toBeGreaterThan(600)
+  it('关断：存储电荷 6 µC；t₀ 约 10 ns，t_s、t_f 各约 60 ns，Q_rr 约为存储电荷的一半，硬恢复有约 720 V 尖峰', () => {
+    near(off.Q0, 6e-6, 0.01)
+    const r = recoveryOf(off)
+    expect(r.t0).toBeGreaterThan(5e-9)
+    expect(r.t0).toBeLessThan(15e-9)
+    near(r.ts, 59e-9, 0.15)
+    near(r.tf, 60e-9, 0.15)
+    near(r.trr, r.ts + r.tf, 1e-9)
+    near(r.IRmax, (600 + 1) / 20, 0.05)
+    const k = r.Qrr / off.Q0
+    expect(k).toBeGreaterThan(0.35)
+    expect(k).toBeLessThan(0.55)
+    expect(r.URM).toBeGreaterThan(650)
     expect(r.URM).toBeLessThan(BV_PIN)
   })
-  it('关断：结先开始阻断，几十纳秒后反向电流才达到峰值（二极管电压接近 −U_R）', () => {
-    const w = turnOff()
-    const r = recoveryOf(w)
-    expect(r.tBlock).toBeLessThan(r.t1)
-    expect(r.t1 - r.tBlock).toBeGreaterThan(15e-9)
-    const atPeak = w.frames.find((f) => f.t === r.t1)!
-    near(-atPeak.u, 600, 0.05)
-  })
-  it('关断：Q_rr 只是存储电荷的一部分（约 40 %）', () => {
-    const w = turnOff()
-    const k = recoveryOf(w).Qrr / w.Q0
-    expect(k).toBeGreaterThan(0.3)
-    expect(k).toBeLessThan(0.5)
+  it('关断：存储阶段结仍正偏（电压约 1 V 以内），结开始阻断后空间电荷区向阴极推进', () => {
+    const r = recoveryOf(off)
+    const mid = off.frames.find((f) => f.t >= r.t0 + r.ts / 2)!
+    expect(Math.abs(mid.u)).toBeLessThan(2)
+    expect(mid.xL).toBe(0)
+    const end = off.frames.find((f) => f.t >= r.tEnd)!
+    expect(end.xL).toBeGreaterThan(30e-4)
   })
 })
 

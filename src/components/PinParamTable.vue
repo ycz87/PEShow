@@ -1,21 +1,24 @@
 <script setup lang="ts">
 // 1.3 的参数表：每行一个手册参数，标明额定值 / 特性值 / 测试条件，给出含义、示例 PiN 与 STTH3012 的数值。
-// 点一行选中它（同一步里的图跟着高亮对应位置），再点一次取消
+// 点一行选中它（同一步里的图跟着高亮对应位置），再点一次取消；linked = false 时表格不和图联动（1.4），不能点
 import Bi from './Bi.vue'
 import Rich from './Rich.vue'
 import { fillBi } from '../app/settings'
 import { UI_STATIC as U, type ParamRow } from '../devices/power-diode/sections/uiStatic'
 
-const props = defineProps<{ rows: ParamRow[]; values: Record<string, Record<string, string | number>>; active: string | null }>()
+const props = withDefaults(
+  defineProps<{ rows: ParamRow[]; values: Record<string, Record<string, string | number>>; active: string | null; linked?: boolean }>(),
+  { linked: true },
+)
 const emit = defineEmits<{ select: [key: string | null] }>()
 
-const toggle = (k: string) => emit('select', props.active === k ? null : k)
+const toggle = (k: string) => props.linked && emit('select', props.active === k ? null : k)
 const sym = (r: ParamRow) => ({ zh: `$${r.sym}$` })
 </script>
 
 <template>
   <div class="ptable">
-    <p class="pt-hint"><Bi :t="U.kindHint" /></p>
+    <p class="pt-hint"><Bi :t="linked ? U.kindHint : U.kindHintPlain" /></p>
     <div class="pt-scroll">
       <table>
         <thead>
@@ -25,8 +28,8 @@ const sym = (r: ParamRow) => ({ zh: `$${r.sym}$` })
           <tr
             v-for="r in rows"
             :key="r.key"
-            :class="{ on: active === r.key }"
-            tabindex="0"
+            :class="{ on: active === r.key, static: !linked }"
+            :tabindex="linked ? 0 : undefined"
             :aria-pressed="active === r.key"
             @click="toggle(r.key)"
             @keydown.enter.space.prevent="toggle(r.key)"
@@ -53,6 +56,7 @@ const sym = (r: ParamRow) => ({ zh: `$${r.sym}$` })
 table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.84rem; }
 thead th { text-align: left; color: var(--ink-soft); font-weight: 700; padding: 4px 8px; white-space: nowrap; }
 tbody tr { cursor: pointer; transition: background 0.2s; }
+tbody tr.static { cursor: default; }
 tbody tr:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
 tbody tr.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 tbody th, tbody td { padding: 6px 8px; border-top: 1px solid color-mix(in srgb, var(--ink) 12%, transparent); text-align: left; vertical-align: top; }
